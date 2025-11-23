@@ -3,8 +3,19 @@ import { generateSongs } from './services/geminiService';
 import { Song, GeneratorFormData } from './types';
 import SongCard from './components/SongCard';
 import LoadingState from './components/LoadingState';
+import { jsPDF } from "jspdf";
+
+// --- CONFIGURAÇÃO DA SENHA ---
+// Altere o valor abaixo para mudar a senha de acesso
+const APP_PASSWORD = "esther87"; 
 
 const App: React.FC = () => {
+  // Estado de Autenticação
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [passwordInput, setPasswordInput] = useState("");
+  const [authError, setAuthError] = useState(false);
+
+  // Estados do App Principal
   const [formData, setFormData] = useState<GeneratorFormData>({
     topic: '',
     rhythm: '',
@@ -14,6 +25,83 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // --- LÓGICA DE LOGIN ---
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (passwordInput === APP_PASSWORD) {
+      setIsAuthenticated(true);
+      setAuthError(false);
+    } else {
+      setAuthError(true);
+    }
+  };
+
+  // --- LÓGICA DO PDF ---
+  const handleExportPDF = () => {
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const margin = 20;
+    const maxLineWidth = pageWidth - (margin * 2);
+
+    // CAPA
+    doc.setFillColor(15, 23, 42); // Cor escura (simulada)
+    doc.rect(0, 0, pageWidth, 297, 'F');
+    
+    doc.setTextColor(255, 255, 255);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(30);
+    doc.text("SUNO ARCHITECT", pageWidth / 2, 100, { align: "center" });
+    
+    doc.setFontSize(16);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Tema: ${formData.topic.substring(0, 40)}...`, pageWidth / 2, 120, { align: "center" });
+    doc.text(`Ritmo: ${formData.rhythm}`, pageWidth / 2, 130, { align: "center" });
+    
+    doc.setFontSize(10);
+    doc.text("Gerado por IA", pageWidth / 2, 280, { align: "center" });
+
+    // PÁGINAS DAS MÚSICAS
+    songs.forEach((song, index) => {
+      doc.addPage();
+      
+      // Reset cor texto para preto (para impressão) ou manter escuro se preferir, 
+      // mas padrão PDF geralmente é fundo branco texto preto para economizar tinta.
+      // Vamos fazer fundo branco para o conteúdo ser imprimível.
+      doc.setTextColor(0, 0, 0);
+
+      // Título
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(22);
+      doc.text(`#${index + 1} - ${song.title}`, margin, 30);
+
+      // Style Prompt
+      doc.setFontSize(12);
+      doc.setTextColor(100, 100, 100);
+      doc.text("Prompt de Estilo (Suno):", margin, 45);
+      
+      doc.setFont("courier", "normal");
+      doc.setTextColor(76, 29, 149); // Roxo
+      const splitPrompt = doc.splitTextToSize(song.stylePrompt, maxLineWidth);
+      doc.text(splitPrompt, margin, 52);
+
+      // Letra
+      const promptHeight = splitPrompt.length * 5;
+      const lyricsStartY = 60 + promptHeight;
+
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(0, 0, 0);
+      doc.text("Letra:", margin, lyricsStartY);
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(11);
+      const splitLyrics = doc.splitTextToSize(song.lyrics, maxLineWidth);
+      doc.text(splitLyrics, margin, lyricsStartY + 8);
+    });
+
+    doc.save("Suno_Architect_Roteiro.pdf");
+  };
+
+  // --- LÓGICA DO APP PRINCIPAL ---
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
@@ -41,6 +129,44 @@ const App: React.FC = () => {
     }
   };
 
+  // RENDERIZAÇÃO CONDICIONAL: TELA DE LOGIN OU APP
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-dark-900 flex items-center justify-center px-4">
+        <div className="max-w-md w-full bg-dark-800 rounded-xl shadow-2xl p-8 border border-dark-700">
+          <div className="text-center mb-8">
+            <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-suno-400 to-purple-500 mb-2">
+              Acesso Restrito
+            </h1>
+            <p className="text-gray-400">Suno Architect</p>
+          </div>
+          <form onSubmit={handleLogin} className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Senha de Acesso</label>
+              <input 
+                type="password" 
+                value={passwordInput}
+                onChange={(e) => setPasswordInput(e.target.value)}
+                className="w-full bg-dark-900 border border-dark-600 rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-suno-500 focus:border-transparent outline-none transition-all"
+                placeholder="Digite a senha..."
+              />
+              {authError && (
+                <p className="text-red-400 text-sm mt-2">Senha incorreta.</p>
+              )}
+            </div>
+            <button 
+              type="submit"
+              className="w-full bg-gradient-to-r from-suno-600 to-purple-600 text-white font-bold py-3 rounded-lg hover:shadow-lg hover:shadow-suno-500/25 transition-all"
+            >
+              Entrar
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  // APP PRINCIPAL
   return (
     <div className="min-h-screen bg-dark-900 text-gray-100 pb-20">
       {/* Hero / Header Section */}
@@ -139,14 +265,20 @@ const App: React.FC = () => {
 
         {!isLoading && songs.length > 0 && (
           <div className="animate-fade-in-up pb-12">
-            <div className="flex items-center justify-between mb-8">
+            <div className="flex flex-col md:flex-row items-center justify-between mb-8 gap-4">
               <h2 className="text-2xl font-bold text-white flex items-center gap-2">
                 <span className="bg-suno-600 w-2 h-8 rounded-full"></span>
                 Resultados Prontos
               </h2>
-              <span className="text-xs font-mono text-suno-300 bg-suno-900/30 px-3 py-1 rounded-full border border-suno-800/50">
-                10 FAIXAS GERADAS
-              </span>
+              
+              {/* Botão Exportar PDF */}
+              <button
+                onClick={handleExportPDF}
+                className="bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-6 rounded-full shadow-lg shadow-green-900/20 flex items-center gap-2 transition-all"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                Baixar Roteiro em PDF
+              </button>
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
